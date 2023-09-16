@@ -19,7 +19,7 @@ import ReactPlayer from 'react-player/lazy'
 import Dict = NodeJS.Dict;
 
 import { VideoView, VIDEO_VIEW } from '../view/VideoView';
-const { setTimeout: setTimeoutPromiseBased } = require('timers/promises');
+import { setTimeout as setTimeoutPromiseBased } from 'timers/promises';
 
 // the process.env variable will be replaced by its target value in the output main.js file
 const baseURL = process.env.RECLIPPED_SERVER_URL || "https://reclipped.com";
