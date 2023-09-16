@@ -1,5 +1,5 @@
 {
-  "name": "reclipped-obsidian-official",
+  "name": "reclipped-official",
   "version": "1.0.0",
   "description": "Automatically syncs your ReClipped annotations with Obsidian.",
   "main": "main.js",
