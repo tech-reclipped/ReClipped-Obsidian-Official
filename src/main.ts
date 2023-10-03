@@ -14,9 +14,7 @@ import {
   Vault
 } from 'obsidian';
 import {StatusBar} from "./status";
-import SystemInfo from "./system";
 import ReactPlayer from 'react-player/lazy'
-import Dict = NodeJS.Dict;
 
 import { VideoView, VIDEO_VIEW } from '../view/VideoView';
 import { setTimeout as setTimeoutPromiseBased } from 'timers/promises';
@@ -128,7 +126,7 @@ export default class ReclippedPlugin extends Plugin {
     this.settings.lastSyncFailed = true;
     this.saveSettings();
     if (buttonContext) {
-      this.showInfoStatus(buttonContext.buttonEl.parentElement, msg, "rw-error");
+      this.showInfoStatus(buttonContext.buttonEl.parentElement, msg, "rc-error");
       buttonContext.buttonEl.setText("Run sync");
     } else {
       this.notice(msg, true, 4, true);
@@ -149,7 +147,7 @@ export default class ReclippedPlugin extends Plugin {
     // if we have a button context, update the text on it
     // this is the case if we fired on a "Run sync" click (the button)
     if (buttonContext) {
-      this.showInfoStatus(buttonContext.buttonEl.parentNode.parentElement, msg, "rw-success");
+      this.showInfoStatus(buttonContext.buttonEl.parentNode.parentElement, msg, "rc-success");
       buttonContext.buttonEl.setText("Run sync");
     }
   }
@@ -208,13 +206,13 @@ export default class ReclippedPlugin extends Plugin {
   }
 
   showInfoStatus(container: HTMLElement, msg: string, className = "") {
-    let info = container.find('.rw-info-container');
+    let info = container.find('.rc-info-container');
     info.setText(msg);
     info.addClass(className);
   }
 
   clearInfoStatus(container: HTMLElement) {
-    let info = container.find('.rw-info-container');
+    let info = container.find('.rc-info-container');
     info.empty();
   }
 
@@ -225,7 +223,7 @@ export default class ReclippedPlugin extends Plugin {
     };
   }
 
-  isEmpty(obj:Dict<any>) : Boolean {
+  isEmpty(obj:{}) : Boolean {
     return Object.keys(obj).length === 0;
   }
 
@@ -486,12 +484,12 @@ export default class ReclippedPlugin extends Plugin {
               'text': 'Warning: Proceeding will delete this file entirely (including any changes you made) ' +
                 'and then reimport a new copy of your annotations from ReClipped.'
             });
-          const buttonsContainer = modal.contentEl.createEl('div', {"cls": "rw-modal-btns"});
+          const buttonsContainer = modal.contentEl.createEl('div', {"cls": "rc-modal-btns"});
           const cancelBtn = buttonsContainer.createEl("button", {"text": "Cancel"});
           const confirmBtn = buttonsContainer.createEl("button", {"text": "Proceed", 'cls': 'mod-warning'});
-          const showConfContainer = modal.contentEl.createEl('div', {'cls': 'rw-modal-confirmation'});
-          showConfContainer.createEl("label", {"attr": {"for": "rw-ask-nl"}, "text": "Don't ask me in the future"});
-          const showConf = showConfContainer.createEl("input", {"type": "checkbox", "attr": {"name": "rw-ask-nl"}});
+          const showConfContainer = modal.contentEl.createEl('div', {'cls': 'rc-modal-confirmation'});
+          showConfContainer.createEl("label", {"attr": {"for": "rc-ask-nl"}, "text": "Don't ask me in the future"});
+          const showConf = showConfContainer.createEl("input", {"type": "checkbox", "attr": {"name": "rc-ask-nl"}});
           showConf.addEventListener('change', (ev) => {
             // @ts-ignore
             this.settings.reimportShowConfirmation = !ev.target.checked;
@@ -529,7 +527,7 @@ export default class ReclippedPlugin extends Plugin {
         while (strongEl.firstChild) {
           replacement.appendChild(strongEl.firstChild);
         }
-        replacement.addClass("rw-hyper-highlight");
+        replacement.addClass("rc-hyper-highlight");
         strongEl.replaceWith(replacement);
       });
     });
@@ -682,19 +680,18 @@ export default class ReclippedPlugin extends Plugin {
   }
 
   getObsidianClientID() {
-    let obsidianClientId = window.localStorage.getItem('rw-ObsidianClientId');
+    let obsidianClientId = window.localStorage.getItem('rc-ObsidianClientId');
     if (obsidianClientId) {
       return obsidianClientId;
     } else {
       obsidianClientId = Math.random().toString(36).substring(2, 15);
-      window.localStorage.setItem('rw-ObsidianClientId', obsidianClientId);
+      window.localStorage.setItem('rc-ObsidianClientId', obsidianClientId);
       return obsidianClientId;
     }
   }
 
   async getUserAuthToken(button: HTMLElement, attempt = 0) {
     let uuid = this.getObsidianClientID();
-    let sysinfo = await SystemInfo.systemInfoFn();
     if (attempt === 0) {
       window.open(`${baseURL}/auth_attempt?client=${uuid}&platform=obsidian`);
     }
@@ -702,7 +699,7 @@ export default class ReclippedPlugin extends Plugin {
     let response, data: ReclippedAuthResponse;
     try {
       response = await fetch(
-        `${baseURL}/api/user/token?client=${uuid}&platform=obsidian&sysinfo=${encodeURI(JSON.stringify(sysinfo))}`
+        `${baseURL}/api/user/token?client=${uuid}&platform=obsidian`
       );
     } catch (e) {
       console.log("ReClipped Official plugin: fetch failed in getUserAuthToken: ", e);
@@ -711,7 +708,7 @@ export default class ReclippedPlugin extends Plugin {
       data = await response.json();
     } else {
       console.log("ReClipped Official plugin: bad response in getUserAuthToken: ", response);
-      this.showInfoStatus(button.parentElement, "Authorization failed. Try again", "rw-error");
+      this.showInfoStatus(button.parentElement, "Authorization failed. Try again", "rc-error");
       return;
     }
     if (data.userAccessToken) {
@@ -752,7 +749,7 @@ class ReclippedSettingTab extends PluginSettingTab {
       new Setting(containerEl)
         .setName("Sync your ReClipped data with Obsidian")
         .setDesc("On first sync, the ReClipped plugin will create a new folder containing all your annotations")
-        .setClass('rw-setting-sync')
+        .setClass('rc-setting-sync')
         .addButton((button) => {
           button.setCta().setTooltip("Once the sync begins, you can close this plugin page")
             .setButtonText('Initiate Sync')
@@ -773,8 +770,8 @@ class ReclippedSettingTab extends PluginSettingTab {
 
             });
         });
-      let el = containerEl.createEl("div", {cls: "rw-info-container"});
-      containerEl.find(".rw-setting-sync > .setting-item-control ").prepend(el);
+      let el = containerEl.createEl("div", {cls: "rc-info-container"});
+      containerEl.find(".rc-setting-sync > .setting-item-control ").prepend(el);
 
       // new Setting(containerEl)
       //   .setName("Customize formatting options")
@@ -845,13 +842,13 @@ class ReclippedSettingTab extends PluginSettingTab {
         );
 
       if (this.plugin.settings.lastSyncFailed) {
-        this.plugin.showInfoStatus(containerEl.find(".rw-setting-sync .rw-info-container").parentElement, "Last sync failed", "rw-error");
+        this.plugin.showInfoStatus(containerEl.find(".rc-setting-sync .rc-info-container").parentElement, "Last sync failed", "rc-error");
       }
     }
     if (!this.plugin.settings.token) {
       new Setting(containerEl)
         .setName("Connect Obsidian to ReClipped")
-        .setClass("rw-setting-connect")
+        .setClass("rc-setting-connect")
         .setDesc("The ReClipped plugin enables automatic syncing of all your annotations from video platforms. Note: Requires ReClipped account.")
         .addButton((button) => {
           button.setButtonText("Connect").setCta().onClick(async (evt) => {
@@ -861,8 +858,8 @@ class ReclippedSettingTab extends PluginSettingTab {
             }
           });
         });
-      let el = containerEl.createEl("div", {cls: "rw-info-container"});
-      containerEl.find(".rw-setting-connect > .setting-item-control ").prepend(el);
+      let el = containerEl.createEl("div", {cls: "rc-info-container"});
+      containerEl.find(".rc-setting-connect > .setting-item-control ").prepend(el);
     }
     const help = containerEl.createEl('p',);
     help.innerHTML = "Question? Please see our <a href='https://blog.reclipped.com/reclipped-for-podcasts-be3d6678ea47'>Documentation</a> or email us at <a href='mailto:admin@reclipped.com'>admin@reclipped.com</a> 🙂";

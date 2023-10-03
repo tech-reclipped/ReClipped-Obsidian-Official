@@ -13,37 +13,37 @@
     --info-color: var(--text-muted, #fff);
 }
 
-.rw-info-container {
+.rc-info-container {
     margin-right: 10px;
 }
 
-.rw-info {
+.rc-info {
     color: var(--info-color);
     font-size: smaller;
 }
 
-.rw-error {
+.rc-error {
     color: var(--error-color);
 }
-.rw-success {
+.rc-success {
     color: var(--success-color);
 }
 
 
-img[alt=rw-book-cover] {
+img[alt=rc-book-cover] {
     max-height: 200px;
 }
 
-.rw-hyper-highlight {
+.rc-hyper-highlight {
     background-color: var(--hyper-highlight);
 }
 
-.rw-modal-btns {
+.rc-modal-btns {
     display: flex;
     justify-content: flex-end;
 }
 
-.rw-modal-confirmation {
+.rc-modal-confirmation {
     margin-top: 1em;
     font-size: smaller;
     text-align: right;
