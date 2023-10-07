@@ -10,7 +10,11 @@ import {
   Notice,
   Plugin,
   PluginSettingTab,
+  requestUrl,
+	RequestUrlResponse,
   Setting,
+	TFile,
+	TFolder,
   Vault
 } from 'obsidian';
 import {StatusBar} from "./status";
@@ -111,14 +115,14 @@ export default class ReclippedPlugin extends Plugin {
   editor: Editor;
   currentlyPlaying = "";
 
-  getErrorMessageFromResponse(response: Response) {
+  getErrorMessageFromResponse(response: RequestUrlResponse) {
     if (response && response.status === 409) {
       return "Sync in progress initiated by different client";
     }
     if (response && response.status === 417) {
       return "Obsidian export is locked. Wait for an hour.";
     }
-    return `${response ? response.statusText : "Can't connect to server"}`;
+    return `${response ? response.text : "Can't connect to server"}`;
   }
 
   handleSyncError(buttonContext: ButtonComponent, msg: string) {
@@ -164,16 +168,16 @@ export default class ReclippedPlugin extends Plugin {
     }
     let response, data: ExportRequestResponse;
     try {
-      response = await fetch(
-        url,
-        {
-          headers: this.getAuthHeaders()
-        }
+      response = await requestUrl({
+		  url: url,
+		  headers: this.getAuthHeaders(),
+		  method: 'GET'
+	    }
       );
     } catch (e) {
       console.log("ReClipped Official plugin: fetch failed in requestArchive: ", e);
     }
-    if (response && response.ok) {
+    if (response && response.status == 200) {
       data = await response.json();
       if (data.video_ids.length <= 0) {
         this.handleSyncSuccess(buttonContext);
@@ -228,18 +232,27 @@ export default class ReclippedPlugin extends Plugin {
   }
 
   async ensureDirectoryExists(processedFileName:string){
-    let dirPath = processedFileName.replace(/\/*$/, '').replace(/^(.+)\/[^\/]*?$/, '$1');
-    const exists = await this.fs.exists(dirPath);
-    if (!exists) {
-      await this.fs.mkdir(dirPath);
+	let dirPath = processedFileName.replace(/\/*$/, '').replace(/^(.+)\/[^\/]*?$/, '$1');
+	const folderOrFile = this.vault.getAbstractFileByPath(dirPath);
+	if (folderOrFile && folderOrFile instanceof TFolder) {
+      console.log("folder exists");
+	} else {
+      await this.vault.createFolder(dirPath);
     }
+  }
+
+  async checkPageExists(fileName:string) {
+	  const folderOrFile = this.vault.getAbstractFileByPath(fileName);
+	  if (folderOrFile && folderOrFile instanceof TFile) {
+		  return true;
+	  }
   }
 
   async createChannelPlatformConnections(channelDict: channelDict, platformDict: platformDict, fs: DataAdapter): Promise<void> {
     if (!this.isEmpty(platformDict)) {
       let platformNameFile = platformDict.platformPath + '.md'
       await this.ensureDirectoryExists(platformNameFile);
-      const platformPageExists = await fs.exists(platformNameFile);
+      const platformPageExists = await this.checkPageExists(platformNameFile);
       if (!platformPageExists) {
         let platformContents = "["+platformDict.platform+"]("+platformDict.baseurl+") \n";
         await fs.write(platformNameFile, platformContents);
@@ -248,7 +261,7 @@ export default class ReclippedPlugin extends Plugin {
     if (!this.isEmpty(channelDict) && platformDict.baseurl != channelDict.channelLink) {
       let channelNameFile = channelDict.channelPath + '.md'
       await this.ensureDirectoryExists(channelNameFile);
-      const channelPageExists = await fs.exists(channelNameFile);
+      const channelPageExists = await this.checkPageExists(channelNameFile);
       if (!channelPageExists) {
         let contents = "Visit ["+channelDict.channelName+"]("+channelDict.channelLink+") on [["+ platformDict.platform +"]] \n";
         await fs.write(channelNameFile, contents);
@@ -272,13 +285,13 @@ export default class ReclippedPlugin extends Plugin {
       this.notice(progressMsg);
       videoCount = videoCount + 1;
       try {
-        response = await fetch(
-            downloadURL + vidId, {headers: this.getAuthHeaders()}
+        response = await requestUrl({
+            url:(downloadURL + vidId), headers: this.getAuthHeaders()}
         );
       } catch (e) {
         console.log("ReClipped Official plugin: fetch failed in download video annotations: ", e);
       }
-      if (response && response.ok) {
+      if (response && response.status == 200) {
         json = await response.json();
         if (this.isEmpty(json)){
           continue;
@@ -329,16 +342,15 @@ export default class ReclippedPlugin extends Plugin {
   async acknowledgeSyncCompleted(buttonContext: ButtonComponent) {
     let response;
     try {
-      response = await fetch(
-        `${baseURL}/api/obsidian/sync_ack`,
-        {
+      response = await requestUrl({
+          url:`${baseURL}/api/obsidian/sync_ack`,
           headers: {...this.getAuthHeaders(), 'Content-Type': 'application/json'},
           method: "POST",
         });
     } catch (e) {
       console.log("ReClipped Official plugin: fetch failed to acknowledged sync: ", e);
     }
-    if (response && response.ok) {
+    if (response && response.status == 200) {
       return;
     } else {
       console.log("ReClipped Official plugin: bad response in acknowledge sync: ", response);
@@ -427,7 +439,7 @@ export default class ReclippedPlugin extends Plugin {
 
     this.refreshDocumentExport(this.settings.videosToRefresh);
 
-    this.app.vault.on("delete", async (file) => {
+	  this.registerEvent(this.app.vault.on("delete", async (file) => {
       const videoId = this.settings.videosIDsMap[file.path];
       if (videoId) {
         await this.addVideoToRefresh(videoId);
@@ -435,9 +447,9 @@ export default class ReclippedPlugin extends Plugin {
       this.refreshDocumentExport();
       delete this.settings.videosIDsMap[file.path];
       this.saveSettings();
-    });
+    }));
 
-    this.app.vault.on("rename", (file, oldPath) => {
+	  this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       const videoId = this.settings.videosIDsMap[oldPath];
       if (!videoId) {
         return;
@@ -445,7 +457,7 @@ export default class ReclippedPlugin extends Plugin {
       this.settings.videosIDsMap[file.path] = videoId;
       delete this.settings.videosIDsMap[oldPath];
       this.saveSettings();
-    });
+    }));
 
     if (this.settings.isSyncing) {
         // we probably got some unhandled error...
@@ -454,7 +466,7 @@ export default class ReclippedPlugin extends Plugin {
     }
 
     this.addCommand({
-      id: 'reclipped-official-sync',
+      id: 'sync',
       name: 'Sync your data now',
       callback: () => {
         this.startSync();
@@ -468,7 +480,7 @@ export default class ReclippedPlugin extends Plugin {
     // });
 
     this.addCommand({
-      id: 'reclipped-official-reimport-file',
+      id: 'reimport-file',
       name: 'Delete and reimport this document',
       editorCheckCallback: (checking: boolean, editor: Editor, view: MarkdownView) => {
         const activeFilePath = view.file.path;
@@ -610,7 +622,6 @@ export default class ReclippedPlugin extends Plugin {
     this.player = null;
     this.editor = null;
     this.setPlaying = null;
-    this.app.workspace.detachLeavesOfType(VIDEO_VIEW);
     return;
   }
 
@@ -619,17 +630,16 @@ export default class ReclippedPlugin extends Plugin {
   }
 
   async activateView(url: string, editor: Editor) {
-    this.app.workspace.detachLeavesOfType(VIDEO_VIEW);
-
-    await this.app.workspace.getRightLeaf(false).setViewState({
-      type: VIDEO_VIEW,
-      active: true,
-    });
-
+	let existingPluginLeaves = this.app.workspace.getLeavesOfType(VIDEO_VIEW);
+	if (existingPluginLeaves.length == 0) {
+	  await this.app.workspace.getRightLeaf(false).setViewState({
+	    type: VIDEO_VIEW,
+	    active: true,
+      });
+	}
     this.app.workspace.revealLeaf(
-        this.app.workspace.getLeavesOfType(VIDEO_VIEW)[0]
+	  this.app.workspace.getLeavesOfType(VIDEO_VIEW)[0]
     );
-
     // This triggers the React component to be loaded
     for (const leaf of this.app.workspace.getLeavesOfType(VIDEO_VIEW)) {
       if (leaf.view instanceof VideoView) {
@@ -740,7 +750,6 @@ class ReclippedSettingTab extends PluginSettingTab {
     let {containerEl} = this;
 
     containerEl.empty();
-    containerEl.createEl('h1', {text: 'ReClipped Official'});
     containerEl.createEl('p', {text: 'Created by '}).createEl('a', {text: 'ReClipped', href: 'https://reclipped.com'});
     containerEl.getElementsByTagName('p')[0].appendText(' 📝');
     containerEl.createEl('h2', {text: 'Settings'});
