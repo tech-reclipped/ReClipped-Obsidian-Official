@@ -870,8 +870,10 @@ class ReclippedSettingTab extends PluginSettingTab {
       let el = containerEl.createEl("div", {cls: "rc-info-container"});
       containerEl.find(".rc-setting-connect > .setting-item-control ").prepend(el);
     }
-    const help = containerEl.createEl('p',);
-    help.innerHTML = "Question? Please see our <a href='https://blog.reclipped.com/reclipped-for-podcasts-be3d6678ea47'>Documentation</a> or email us at <a href='mailto:admin@reclipped.com'>admin@reclipped.com</a> 🙂";
+    const help = containerEl.createEl('p', {text: "Question? Please see our "});
+    help.createEl('a', {text: "Documentation", href:"https://blog.reclipped.com/reclipped-for-podcasts-be3d6678ea47"});
+    help.createEl('span', {text:" or email us at "});
+    help.createEl('a', {text: "admin@reclipped.com", href:"mailto:admin@reclipped.com"})
   }
 }
 
