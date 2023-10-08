@@ -178,7 +178,7 @@ export default class ReclippedPlugin extends Plugin {
       console.log("ReClipped Official plugin: fetch failed in requestArchive: ", e);
     }
     if (response && response.status == 200) {
-      data = await response.json();
+      data = await response.json;
       if (data.video_ids.length <= 0) {
         this.handleSyncSuccess(buttonContext);
         this.notice("ReClipped data is already up to date", false, 4, true);
@@ -233,16 +233,16 @@ export default class ReclippedPlugin extends Plugin {
 
   async ensureDirectoryExists(processedFileName:string){
 	let dirPath = processedFileName.replace(/\/*$/, '').replace(/^(.+)\/[^\/]*?$/, '$1');
-	const folderOrFile = this.vault.getAbstractFileByPath(dirPath);
+	const folderOrFile = this.app.vault.getAbstractFileByPath(dirPath);
 	if (folderOrFile && folderOrFile instanceof TFolder) {
       console.log("folder exists");
 	} else {
-      await this.vault.createFolder(dirPath);
+      await this.app.vault.createFolder(dirPath);
     }
   }
 
   async checkPageExists(fileName:string) {
-	  const folderOrFile = this.vault.getAbstractFileByPath(fileName);
+	  const folderOrFile = this.app.vault.getAbstractFileByPath(fileName);
 	  if (folderOrFile && folderOrFile instanceof TFile) {
 		  return true;
 	  }
@@ -292,7 +292,7 @@ export default class ReclippedPlugin extends Plugin {
         console.log("ReClipped Official plugin: fetch failed in download video annotations: ", e);
       }
       if (response && response.status == 200) {
-        json = await response.json();
+        json = await response.json;
         if (this.isEmpty(json)){
           continue;
         }
@@ -708,14 +708,14 @@ export default class ReclippedPlugin extends Plugin {
 
     let response, data: ReclippedAuthResponse;
     try {
-      response = await fetch(
-        `${baseURL}/api/user/token?client=${uuid}&platform=obsidian`
-      );
+      response = await requestUrl({
+        "url": `${baseURL}/api/user/token?client=${uuid}&platform=obsidian`
+    });
     } catch (e) {
       console.log("ReClipped Official plugin: fetch failed in getUserAuthToken: ", e);
     }
-    if (response && response.ok) {
-      data = await response.json();
+    if (response && response.status == 200) {
+      data = await response.json;
     } else {
       console.log("ReClipped Official plugin: bad response in getUserAuthToken: ", response);
       this.showInfoStatus(button.parentElement, "Authorization failed. Try again", "rc-error");
