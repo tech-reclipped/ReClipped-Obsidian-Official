@@ -1,9 +1,9 @@
 {
 	"id": "reclipped-official",
 	"name": "ReClipped Official",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"minAppVersion": "0.12.10",
-	"description": "Official ReClipped <-> Obsidian integration",
+	"description": "Official ReClipped and Obsidian integration",
 	"author": "ReClipped",
 	"authorUrl": "https://reclipped.com",
 	"isDesktopOnly": false
