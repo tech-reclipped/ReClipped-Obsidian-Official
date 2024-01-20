@@ -72,6 +72,7 @@ interface ReclippedPluginSettings {
   lastSyncFailed: boolean;
   lastSyncedTimeEpoch: number;
   refreshVideos: boolean,
+  autoplayVideos: boolean,
   videosToRefresh: Array<string>;
   videosIDsMap: { [key: string]: string; };
   videoIDUrlMap: { [key:string]: string };
@@ -93,6 +94,7 @@ const DEFAULT_SETTINGS: ReclippedPluginSettings = {
   lastSyncFailed: false,
   lastSyncedTimeEpoch: 0,
   refreshVideos: false,
+  autoplayVideos: true,
   videosToRefresh: [],
   videosIDsMap: {},
   videoIDUrlMap: {},
@@ -610,6 +612,7 @@ export default class ReclippedPlugin extends Plugin {
           if (this.currentlyPlaying!= vidUrl) {
             this.activateView(vidUrl, this.editor);
             this.currentlyPlaying = vidUrl;
+			this.setPlaying(this.settings.autoplayVideos);
           }
         } else {
           this.deactivateView();
@@ -643,7 +646,6 @@ export default class ReclippedPlugin extends Plugin {
     // This triggers the React component to be loaded
     for (const leaf of this.app.workspace.getLeavesOfType(VIDEO_VIEW)) {
       if (leaf.view instanceof VideoView) {
-
         const setupPlayer = (player: ReactPlayer, setPlaying: React.Dispatch<React.SetStateAction<boolean>>) => {
           this.player = player;
           this.setPlaying = setPlaying;
@@ -846,6 +848,17 @@ class ReclippedSettingTab extends PluginSettingTab {
               if (val) {
                 this.plugin.refreshDocumentExport();
               }
+            });
+          }
+        );
+	  new Setting(containerEl)
+        .setName("Autoplay Videos")
+        .setDesc("If enabled, video autoplays when annotation page changed")
+        .addToggle((toggle) => {
+            toggle.setValue(this.plugin.settings.autoplayVideos);
+            toggle.onChange(async (val) => {
+              this.plugin.settings.autoplayVideos = val;
+              await this.plugin.saveSettings();
             });
           }
         );
