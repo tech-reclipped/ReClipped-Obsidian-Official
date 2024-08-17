@@ -38,6 +38,8 @@ export const VideoContainer = ({ url, setupPlayer, start, setupError }: VideoCon
 				onError={(err) => setupError(err ?
 					err.message :
 					`Video is unplayable due to privacy settings, streaming permissions, etc.`)} // Error handling for invalid URLs
+				onPlay={() => setPlaying(true)}
+				onPause={() => setPlaying(false)}
 			/>
 		</>
 	)

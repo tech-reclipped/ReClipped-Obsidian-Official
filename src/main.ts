@@ -11,10 +11,10 @@ import {
   Plugin,
   PluginSettingTab,
   requestUrl,
-	RequestUrlResponse,
+  RequestUrlResponse,
   Setting,
-	TFile,
-	TFolder,
+  TFile,
+  TFolder,
   Vault
 } from 'obsidian';
 import {StatusBar} from "./status";
@@ -124,6 +124,12 @@ export default class ReclippedPlugin extends Plugin {
     if (response && response.status === 417) {
       return "Obsidian export is locked. Wait for an hour.";
     }
+	if (response && response.status === 402) {
+      return "ReClipped Basic Plan required.";
+    }
+	if (response && response.status === 412) {
+      return "Access revoked from account, initiate resync.";
+    }
     return `${response ? response.text : "Can't connect to server"}`;
   }
 
@@ -168,16 +174,17 @@ export default class ReclippedPlugin extends Plugin {
     if (auto) {
       url += `&auto=${auto}`;
     }
-    let response, data: ExportRequestResponse;
+    let response: RequestUrlResponse, data: ExportRequestResponse;
     try {
-      response = await requestUrl({
+		  response = await requestUrl({
 		  url: url,
 		  headers: this.getAuthHeaders(),
 		  method: 'GET'
 	    }
       );
     } catch (e) {
-      console.log("ReClipped Official plugin: fetch failed in requestArchive: ", e);
+		response = e;
+        console.log("ReClipped Official plugin: fetch failed in requestArchive: ", e);
     }
     if (response && response.status == 200) {
       data = await response.json;
@@ -804,6 +811,15 @@ class ReclippedSettingTab extends PluginSettingTab {
             this.plugin.settings.reclippedDir = normalizePath(value || "ReClipped");
             await this.plugin.saveSettings();
           }));
+
+		new Setting(containerEl)
+		  .setName("Customize Channel and Platform folder")
+		  .setDesc("Plugin will use /Channels, and /Platforms folder respectively by default ")
+		  .addButton((button) => {
+		    button.setButtonText("Customize").onClick(() => {
+		      window.open(`${baseURL}/account/sync_obsidian`);
+		    });
+		  });
 
       new Setting(containerEl)
         .setName('Configure resync frequency')
