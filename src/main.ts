@@ -69,6 +69,7 @@ interface ReclippedPluginSettings {
   isSyncing: boolean;
   frequency: string;
   triggerOnLoad: boolean;
+  createCPFolders: boolean;
   lastSyncFailed: boolean;
   lastSyncedTimeEpoch: number;
   refreshVideos: boolean,
@@ -90,6 +91,7 @@ const DEFAULT_SETTINGS: ReclippedPluginSettings = {
   reclippedDir: "ReClipped",
   frequency: "0", // manual by default
   triggerOnLoad: true,
+  createCPFolders: true,
   isSyncing: false,
   lastSyncFailed: false,
   lastSyncedTimeEpoch: 0,
@@ -311,7 +313,9 @@ export default class ReclippedPlugin extends Plugin {
         this.notice(`Saving file ${cleanedFileName}`, false, 30);
         const processedFileName = normalizePath(this.settings.reclippedDir + '/' + cleanedFileName + '.md');
         try {
-          await this.createChannelPlatformConnections(channelDict, platform, this.fs);
+		      if (this.settings.createCPFolders) {
+            await this.createChannelPlatformConnections(channelDict, platform, this.fs);
+          }
           // write the actual files
           const contentToSave = json.annotations;
           let originalName = processedFileName;
@@ -813,8 +817,25 @@ class ReclippedSettingTab extends PluginSettingTab {
           }));
 
 		new Setting(containerEl)
+		  .setName("Create Platform and Channel folders")
+		  .setDesc("If enabled, ReClipped will create Platform and Channel folders")
+		  .addToggle((toggle) => {
+			toggle.setValue(this.plugin.settings.createCPFolders);
+			toggle.onChange((val) => {
+		      this.plugin.settings.createCPFolders = val;
+			  this.plugin.saveSettings();
+			  if (val){
+				  containerEl.getElementsByClassName("cp_folder")[0].removeAttribute("style");
+			  } else {
+				  containerEl.getElementsByClassName("cp_folder")[0].setAttribute("style", "display:none");
+			  }
+			});
+		  });
+
+		new Setting(containerEl)
 		  .setName("Customize Channel and Platform folder")
 		  .setDesc("Plugin will use /Channels, and /Platforms folder respectively by default ")
+		  .setClass("cp_folder")
 		  .addButton((button) => {
 		    button.setButtonText("Customize").onClick(() => {
 		      window.open(`${baseURL}/account/sync_obsidian`);
@@ -899,6 +920,9 @@ class ReclippedSettingTab extends PluginSettingTab {
       let el = containerEl.createEl("div", {cls: "rc-info-container"});
       containerEl.find(".rc-setting-connect > .setting-item-control ").prepend(el);
     }
+	if (!this.plugin.settings.createCPFolders){
+		containerEl.getElementsByClassName("cp_folder")[0].setAttribute("style", "display:none");
+	}
     const help = containerEl.createEl('p', {text: "Question? Please see our "});
     help.createEl('a', {text: "Documentation", href:"https://blog.reclipped.com/"});
     help.createEl('span', {text:" or email us at "});

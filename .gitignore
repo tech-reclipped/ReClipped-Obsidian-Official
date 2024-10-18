@@ -15,6 +15,7 @@ package-lock.json
 
 # JetBrains IDE
 .idea/
+.editorconfig
 
 # Unit test reports
 TEST*.xml
