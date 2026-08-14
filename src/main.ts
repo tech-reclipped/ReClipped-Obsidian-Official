@@ -4,6 +4,7 @@ import {
   DataAdapter,
   debounce,
   Editor,
+  FuzzySuggestModal,
   MarkdownView,
   Modal,
   normalizePath,
@@ -108,6 +109,29 @@ const DEFAULT_SETTINGS: ReclippedPluginSettings = {
   urlStartTimeMap: new Map<string, number>(),
 };
 
+class VideoSuggestModal extends FuzzySuggestModal<TFile> {
+  plugin: ReclippedPlugin;
+  onSubmit: (file: TFile) => void;
+
+  constructor(plugin: ReclippedPlugin, onSubmit: (file: TFile) => void) {
+    super(plugin.app);
+    this.plugin = plugin;
+    this.onSubmit = onSubmit;
+  }
+
+  getItems(): TFile[] {
+    return this.app.vault.getFiles().filter(f => f.extension.match(/^(mp4|webm|ogg|mp3|mkv|avi|mov)$/i));
+  }
+
+  getItemText(file: TFile): string {
+    return file.path;
+  }
+
+  onChooseItem(file: TFile, evt: MouseEvent | KeyboardEvent) {
+    this.onSubmit(file);
+  }
+}
+
 export default class ReclippedPlugin extends Plugin {
   settings: ReclippedPluginSettings;
   fs: DataAdapter;
@@ -118,6 +142,7 @@ export default class ReclippedPlugin extends Plugin {
   setPlaying: React.Dispatch<React.SetStateAction<boolean>>;
   editor: Editor;
   currentlyPlaying = "";
+  settingTab: any;
 
   getErrorMessageFromResponse(response: RequestUrlResponse) {
     if (response && response.status === 409) {
@@ -141,7 +166,22 @@ export default class ReclippedPlugin extends Plugin {
     this.saveSettings();
     if (buttonContext) {
       this.showInfoStatus(buttonContext.buttonEl.parentElement, msg, "rc-error");
-      buttonContext.buttonEl.setText("Run sync");
+      if (msg === "Access revoked from account, initiate resync.") {
+        this.settings.token = "";
+        this.saveSettings();
+        buttonContext.buttonEl.setText("Connect");
+        const newBtnEl = buttonContext.buttonEl.cloneNode(true) as HTMLButtonElement;
+        buttonContext.buttonEl.parentNode.replaceChild(newBtnEl, buttonContext.buttonEl);
+        buttonContext.buttonEl = newBtnEl;
+        buttonContext.onClick(async (evt) => {
+          const success = await this.getUserAuthToken(evt.target as HTMLElement);
+          if (success && this.settingTab) {
+            this.settingTab.display();
+          }
+        });
+      } else {
+        buttonContext.buttonEl.setText("Run sync");
+      }
     } else {
       this.notice(msg, true, 4, true);
     }
@@ -238,7 +278,8 @@ export default class ReclippedPlugin extends Plugin {
     };
   }
 
-  isEmpty(obj:{}) : Boolean {
+  isEmpty(obj: any): boolean {
+    if (!obj) return true;
     return Object.keys(obj).length === 0;
   }
 
@@ -248,7 +289,11 @@ export default class ReclippedPlugin extends Plugin {
 	if (folderOrFile && folderOrFile instanceof TFolder) {
       console.log("folder exists");
 	} else {
-      await this.app.vault.createFolder(dirPath);
+      try {
+        await this.app.vault.createFolder(dirPath);
+      } catch (e) {
+        // Ignored. Obsidian might sometimes throw if the folder was created concurrently
+      }
     }
   }
 
@@ -260,7 +305,7 @@ export default class ReclippedPlugin extends Plugin {
   }
 
   async createChannelPlatformConnections(channelDict: channelDict, platformDict: platformDict, fs: DataAdapter): Promise<void> {
-    if (!this.isEmpty(platformDict)) {
+    if (!this.isEmpty(platformDict) && platformDict.platform) {
       let platformNameFile = platformDict.platformPath + '.md'
       await this.ensureDirectoryExists(platformNameFile);
       const platformPageExists = await this.checkPageExists(platformNameFile);
@@ -269,12 +314,13 @@ export default class ReclippedPlugin extends Plugin {
         await fs.write(platformNameFile, platformContents);
       }
     }
-    if (!this.isEmpty(channelDict) && platformDict.baseurl != channelDict.channelLink) {
+    if (!this.isEmpty(channelDict) && (!platformDict.platform || platformDict.baseurl != channelDict.channelLink)) {
       let channelNameFile = channelDict.channelPath + '.md'
       await this.ensureDirectoryExists(channelNameFile);
       const channelPageExists = await this.checkPageExists(channelNameFile);
       if (!channelPageExists) {
-        let contents = "Visit ["+channelDict.channelName+"]("+channelDict.channelLink+") on [["+ platformDict.platform +"]] \n";
+        let platformStr = (!this.isEmpty(platformDict) && platformDict.platform) ? " on [["+ platformDict.platform +"]]" : "";
+        let contents = "Visit ["+channelDict.channelName+"]("+channelDict.channelLink+")" + platformStr + " \n";
         await fs.write(channelNameFile, contents);
       }
     }
@@ -307,7 +353,7 @@ export default class ReclippedPlugin extends Plugin {
         if (this.isEmpty(json)){
           continue;
         }
-        let cleanedFileName = json.title;
+        let cleanedFileName = json.title ? json.title.replace(/[\\/:"*?<>|]+/g, '-') : "Untitled Video";
         let channelDict = json.channel;
         let platform = json.platform;
         this.notice(`Saving file ${cleanedFileName}`, false, 30);
@@ -317,7 +363,14 @@ export default class ReclippedPlugin extends Plugin {
             await this.createChannelPlatformConnections(channelDict, platform, this.fs);
           }
           // write the actual files
-          const contentToSave = json.annotations;
+          let contentToSave = json.annotations;
+          if (json.vidUrl && json.vidUrl.startsWith("localsource/")) {
+              try {
+                  const base64Filename = json.vidUrl.split('/')[1];
+                  const decodedFilename = atob(base64Filename);
+                  contentToSave = contentToSave.replace(`source: "${json.vidUrl}"`, `source: "Local Video: ${decodedFilename}"`);
+              } catch (e) {}
+          }
           let originalName = processedFileName;
           // extracting video id = title
           this.settings.videosIDsMap[originalName] = vidId;
@@ -430,6 +483,29 @@ export default class ReclippedPlugin extends Plugin {
   }
 
   async onload() {
+    this.addCommand({
+      id: "select-local-video",
+      name: "Select Local Video for Current Note",
+      checkCallback: (checking: boolean) => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (view) {
+          const videoId = this.settings.videosIDsMap[view.file.path];
+          if (videoId) {
+            if (!checking) {
+              new VideoSuggestModal(this, async (file: TFile) => {
+                this.settings.videoIDUrlMap[videoId] = "vault://" + file.path;
+                await this.saveSettings();
+                new Notice(`Linked ${file.name} to this note.`);
+                this.activateView("vault://" + file.path, view.editor);
+              }).open();
+            }
+            return true;
+          }
+        }
+        return false;
+      }
+    });
+
     this.registerView(
         VIDEO_VIEW,
         (leaf) => new VideoView(leaf)
@@ -557,7 +633,8 @@ export default class ReclippedPlugin extends Plugin {
       });
     });
 
-    this.addSettingTab(new ReclippedSettingTab(this.app, this));
+    this.settingTab = new ReclippedSettingTab(this.app, this);
+    this.addSettingTab(this.settingTab);
 
     await this.configureSchedule();
 
@@ -644,6 +721,42 @@ export default class ReclippedPlugin extends Plugin {
   }
 
   async activateView(url: string, editor: Editor) {
+    let playableUrl = url;
+    let isUnresolvedLocal = false;
+    let decodedFilename = "Local Video";
+
+    if (url && url.startsWith("localsource/")) {
+      try {
+        const base64Filename = url.split('/')[1];
+        decodedFilename = atob(base64Filename);
+        const files = this.app.vault.getFiles();
+        const file = files.find(f => f.name === decodedFilename);
+        if (file) {
+          playableUrl = this.app.vault.getResourcePath(file);
+        } else {
+          isUnresolvedLocal = true;
+        }
+      } catch (e) {
+        console.error("Error decoding local video filename:", e);
+        isUnresolvedLocal = true;
+      }
+    } else if (url && url.startsWith("vault://")) {
+      const filePath = url.replace("vault://", "");
+      const file = this.app.vault.getAbstractFileByPath(filePath);
+      if (file instanceof TFile) {
+        playableUrl = this.app.vault.getResourcePath(file);
+      } else {
+        isUnresolvedLocal = true;
+      }
+    } else if (url && url.startsWith("file://")) {
+      const filePath = url.replace("file://", "");
+      playableUrl = "app://local" + (filePath.startsWith("/") ? filePath : "/" + filePath);
+    }
+
+    if (isUnresolvedLocal) {
+        new Notice(`Could not find ${decodedFilename}. Use the 'Select Local Video' command to link the file.`);
+    }
+
 	let existingPluginLeaves = this.app.workspace.getLeavesOfType(VIDEO_VIEW);
 	if (existingPluginLeaves.length == 0) {
 	  await this.app.workspace.getRightLeaf(false).setViewState({
@@ -675,7 +788,7 @@ export default class ReclippedPlugin extends Plugin {
 
         // create a new video instance, sets up state/unload functionality, and passes in a start time if available else 0
         leaf.setEphemeralState({
-          url,
+          url: playableUrl,
           setupPlayer,
           setupError,
           saveTimeOnUnload,
