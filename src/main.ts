@@ -231,12 +231,10 @@ export default class ReclippedPlugin extends Plugin {
     if (response && response.status == 200) {
       data = await response.json;
       if (data.video_ids.length <= 0) {
-        this.handleSyncSuccess(buttonContext);
+        this.handleSyncSuccess(buttonContext, "Synced", data.last_synced_epoch);
         this.notice("ReClipped data is already up to date", false, 4, true);
         return;
       }
-      this.settings.lastSyncedTimeEpoch = data.last_synced_epoch;
-      await this.saveSettings();
       this.notice("Syncing ReClipped data");
       return this.downloadAnnotations(data.last_synced_epoch, data.video_ids, buttonContext);
     } else {
@@ -328,8 +326,8 @@ export default class ReclippedPlugin extends Plugin {
 
   async downloadAnnotations(syncUpTo: number, videoIds:Array<string>, buttonContext: ButtonComponent): Promise<void> {
     let downloadURL = `${baseURL}/api/download/markdown?video_id=`;
-    let response, json:markdownResponseJson;
     let videoCount = 1;
+    let hasErrors = false;
     this.fs = this.app.vault.adapter;
     // ensure the directory exists
     let dirPath = this.settings.reclippedDir;
@@ -337,72 +335,89 @@ export default class ReclippedPlugin extends Plugin {
     if (!exists) {
       await this.fs.mkdir(dirPath);
     }
-    for (const vidId of videoIds){
-      const progressMsg = `Exporting ReClipped data (${videoCount} / ${videoIds.length}) ...`;
-      this.notice(progressMsg);
-      videoCount = videoCount + 1;
-      try {
-        response = await requestUrl({
-            url:(downloadURL + vidId), headers: this.getAuthHeaders()}
-        );
-      } catch (e) {
-        console.log("ReClipped Official plugin: fetch failed in download video annotations: ", e);
-      }
-      if (response && response.status == 200) {
-        json = await response.json;
-        if (this.isEmpty(json)){
-          continue;
-        }
-        let cleanedFileName = json.title ? json.title.replace(/[\\/:"*?<>|]+/g, '-') : "Untitled Video";
-        let channelDict = json.channel;
-        let platform = json.platform;
-        this.notice(`Saving file ${cleanedFileName}`, false, 30);
-        const processedFileName = normalizePath(this.settings.reclippedDir + '/' + cleanedFileName + '.md');
+    try {
+      for (const vidId of videoIds){
+        const progressMsg = `Exporting ReClipped data (${videoCount} / ${videoIds.length}) ...`;
+        this.notice(progressMsg);
+        videoCount = videoCount + 1;
+        let response: RequestUrlResponse = null;
+        let json: markdownResponseJson = null;
         try {
-		      if (this.settings.createCPFolders) {
-            await this.createChannelPlatformConnections(channelDict, platform, this.fs);
-          }
-          // write the actual files
-          let contentToSave = json.annotations;
-          if (json.vidUrl && json.vidUrl.startsWith("localsource/")) {
-              try {
-                  const base64Filename = json.vidUrl.split('/')[1];
-                  const decodedFilename = atob(base64Filename);
-                  contentToSave = contentToSave.replace(`source: "${json.vidUrl}"`, `source: "Local Video: ${decodedFilename}"`);
-              } catch (e) {}
-          }
-          let originalName = processedFileName;
-          // extracting video id = title
-          this.settings.videosIDsMap[originalName] = vidId;
-          this.settings.videoIDUrlMap[vidId] = json.vidUrl;
-          await this.fs.write(originalName, contentToSave);
-          let videosToRefresh = this.settings.videosToRefresh;
-          this.settings.videosToRefresh = videosToRefresh.filter(n => n!=vidId);
-          await this.saveSettings();
+          response = await requestUrl({
+              url:(downloadURL + vidId), headers: this.getAuthHeaders()}
+          );
         } catch (e) {
-          console.log(`ReClipped Official plugin: error writing ${processedFileName}:`, e);
-          this.notice(`ReClipped: error while writing ${processedFileName}: ${e}`, true, 4, true);
-          if (vidId) {
+          console.log("ReClipped Official plugin: fetch failed in download video annotations: ", e);
+        }
+        if (response && response.status == 200) {
+          json = await response.json;
+          if (this.isEmpty(json)){
+            continue;
+          }
+          let cleanedFileName = json.title ? json.title.replace(/[\\/:"*?<>|]+/g, '-') : "Untitled Video";
+          let channelDict = json.channel;
+          let platform = json.platform;
+          this.notice(`Saving file ${cleanedFileName}`, false, 30);
+          const processedFileName = normalizePath(this.settings.reclippedDir + '/' + cleanedFileName + '.md');
+          try {
+            await this.ensureDirectoryExists(processedFileName);
+            if (this.settings.createCPFolders) {
+              await this.createChannelPlatformConnections(channelDict, platform, this.fs);
+            }
+            // write the actual files
+            let contentToSave = json.annotations;
+            if (json.vidUrl && json.vidUrl.startsWith("localsource/")) {
+                try {
+                    const base64Filename = json.vidUrl.split('/')[1];
+                    const decodedFilename = atob(base64Filename);
+                    contentToSave = contentToSave.replace(`source: "${json.vidUrl}"`, `source: "Local Video: ${decodedFilename}"`);
+                } catch (e) {}
+            }
+            let originalName = processedFileName;
+            // extracting video id = title
+            this.settings.videosIDsMap[originalName] = vidId;
+            this.settings.videoIDUrlMap[vidId] = json.vidUrl;
+            await this.fs.write(originalName, contentToSave);
+            let videosToRefresh = this.settings.videosToRefresh;
+            this.settings.videosToRefresh = videosToRefresh.filter(n => n!=vidId);
+            await this.saveSettings();
+          } catch (e) {
+            console.log(`ReClipped Official plugin: error writing ${processedFileName}:`, e);
+            this.notice(`ReClipped: error while writing ${processedFileName}: ${e}`, true, 4, true);
+            hasErrors = true;
+            if (vidId && !this.settings.videosToRefresh.includes(vidId)) {
+              this.settings.videosToRefresh.push(vidId);
+              await this.saveSettings();
+            }
+          }
+        } else {
+          console.log(`ReClipped Official plugin: bad response in downloadAnnotations for video ${vidId}: `, response);
+          hasErrors = true;
+          if (vidId && !this.settings.videosToRefresh.includes(vidId)) {
             this.settings.videosToRefresh.push(vidId);
             await this.saveSettings();
           }
         }
-      } else {
-        console.log("ReClipped Official plugin: bad response in downloadAnnotations: ", response);
-        this.handleSyncError(buttonContext, this.getErrorMessageFromResponse(response));
-        return;
+        await setTimeoutPromiseBased(10);
       }
-      await setTimeoutPromiseBased(10);
-    }
 
-    await this.acknowledgeSyncCompleted(buttonContext);
-    this.handleSyncSuccess(buttonContext, "Synced!", syncUpTo);
-    this.notice("ReClipped sync completed", true, 1, true);
-    // @ts-ignore
-    if (this.app.isMobile) {
-      this.notice("If you don't see all of your reclipped files reload obsidian app", true,);
+      await this.acknowledgeSyncCompleted(buttonContext);
+      if (hasErrors) {
+        this.handleSyncSuccess(buttonContext, "Synced with errors", null);
+        this.notice("ReClipped: Some videos could not be downloaded. Run sync again to retry.", true, 5, true);
+      } else {
+        this.handleSyncSuccess(buttonContext, "Synced!", syncUpTo);
+        this.notice("ReClipped sync completed", true, 1, true);
+      }
+      // @ts-ignore
+      if (this.app.isMobile) {
+        this.notice("If you don't see all of your reclipped files reload obsidian app", true,);
+      }
+      return;
+    } finally {
+      this.settings.isSyncing = false;
+      await this.saveSettings();
     }
-    return;
   }
 
   async acknowledgeSyncCompleted(buttonContext: ButtonComponent) {
